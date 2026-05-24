@@ -1,0 +1,235 @@
+{% extends 'base.html' %}
+
+{% block title %}Alerts - Smart Honeypot{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">🚨 Security Alerts</h1>
+    <div class="header-actions">
+        <button class="btn btn-ghost" onclick="acknowledgeAll()">
+            <i class="fas fa-check-double"></i> Acknowledge All
+        </button>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card" style="margin-bottom: 24px;">
+    <form method="get" style="display: flex; gap: 16px; flex-wrap: wrap; align-items: end;">
+        <div style="flex: 1; min-width: 150px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">Severity</label>
+            <select name="severity" style="width: 100%; padding: 12px; background: var(--bg-glass); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                <option value="">All Severities</option>
+                {% for code, name in severity_choices %}
+                <option value="{{ code }}" {% if severity == code %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="flex: 1; min-width: 150px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">Type</label>
+            <select name="type" style="width: 100%; padding: 12px; background: var(--bg-glass); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                <option value="">All Types</option>
+                {% for code, name in type_choices %}
+                <option value="{{ code }}" {% if alert_type == code %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="flex: 1; min-width: 150px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">Status</label>
+            <select name="status" style="width: 100%; padding: 12px; background: var(--bg-glass); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                <option value="">All</option>
+                <option value="OPEN"           {% if status_filter == 'OPEN' %}selected{% endif %}>Open</option>
+                <option value="INVESTIGATING"  {% if status_filter == 'INVESTIGATING' %}selected{% endif %}>Investigating</option>
+                <option value="RESOLVED"       {% if status_filter == 'RESOLVED' %}selected{% endif %}>Resolved</option>
+                <option value="ESCALATED"      {% if status_filter == 'ESCALATED' %}selected{% endif %}>Escalated</option>
+                <option value="FALSE_POSITIVE" {% if status_filter == 'FALSE_POSITIVE' %}selected{% endif %}>False Positive</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filter</button>
+        <a href="{% url 'dashboard:alerts' %}" class="btn btn-ghost">Clear</a>
+    </form>
+</div>
+
+<!-- Alerts List -->
+<div class="card">
+    {% for alert in alerts %}
+    <div class="alert-item {{ alert.severity|lower }}" id="alert-{{ alert.id }}"
+        style="{% if alert.status == 'RESOLVED' or alert.status == 'FALSE_POSITIVE' %}opacity: 0.6;{% endif %}">
+
+        <div>
+            <span class="badge badge-{% if alert.severity == 'CRITICAL' %}danger{% elif alert.severity == 'HIGH' %}warning{% elif alert.severity == 'MEDIUM' %}info{% else %}success{% endif %}">
+                {{ alert.severity }}
+            </span>
+        </div>
+
+        <div style="flex: 1;">
+            <div style="font-weight: 600; margin-bottom: 4px;">{{ alert.title }}</div>
+            <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 8px;">
+                {{ alert.description|truncatechars:150 }}
+            </div>
+            <div style="display: flex; gap: 16px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap;">
+                <span><i class="fas fa-tag"></i> {{ alert.get_alert_type_display }}</span>
+                {% if alert.ip_address %}
+                <span><i class="fas fa-globe"></i> {{ alert.ip_address }}</span>
+                {% endif %}
+                <span><i class="fas fa-clock"></i> {{ alert.timestamp|timesince }} ago</span>
+                {% if alert.status == 'INVESTIGATING' %}
+                <span style="color: #fbbf24;"><i class="fas fa-search"></i> Investigating</span>
+                {% elif alert.status == 'ESCALATED' %}
+                <span style="color: #f87171;"><i class="fas fa-arrow-up"></i> Escalated</span>
+                {% elif alert.status == 'FALSE_POSITIVE' %}
+                <span style="color: #9ca3af;"><i class="fas fa-ban"></i> False Positive</span>
+                {% endif %}
+            </div>
+            {% if alert.resolution_note %}
+            <div style="margin-top: 8px; padding: 6px 10px; background: rgba(255,255,255,0.04); border-left: 2px solid #34d399; border-radius: 4px; font-size: 12px; color: var(--text-secondary);">
+                <i class="fas fa-comment-alt"></i> {{ alert.resolution_note }}
+                {% if alert.resolved_by %} — <strong>{{ alert.resolved_by }}</strong>{% if alert.resolved_at %}, {{ alert.resolved_at|date:"d M H:i" }}{% endif %}{% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">
+            {% if alert.status == 'OPEN' %}
+                <button class="btn btn-ghost" style="padding: 8px 16px; font-size: 12px; width: 140px;"
+                    onclick="quickAction({{ alert.id }}, 'INVESTIGATING')">
+                    <i class="fas fa-search"></i> Investigate
+                </button>
+                <button class="btn btn-ghost" style="padding: 8px 16px; font-size: 12px; width: 140px; color: #34d399; border-color: rgba(52,211,153,0.4);"
+                    onclick="openModal({{ alert.id }}, 'RESOLVED')">
+                    <i class="fas fa-check"></i> Resolve
+                </button>
+                <button class="btn btn-ghost" style="padding: 8px 16px; font-size: 12px; width: 140px; color: #f87171; border-color: rgba(248,113,113,0.4);"
+                    onclick="openModal({{ alert.id }}, 'ESCALATED')">
+                    <i class="fas fa-arrow-up"></i> Escalate
+                </button>
+                <button class="btn btn-ghost" style="padding: 8px 16px; font-size: 12px; width: 140px; color: #9ca3af; border-color: rgba(156,163,175,0.3);"
+                    onclick="quickAction({{ alert.id }}, 'FALSE_POSITIVE')">
+                    <i class="fas fa-ban"></i> False Positive
+                </button>
+
+            {% elif alert.status == 'INVESTIGATING' %}
+                <button class="btn btn-ghost" style="padding: 8px 16px; font-size: 12px; width: 140px; color: #34d399; border-color: rgba(52,211,153,0.4);"
+                    onclick="openModal({{ alert.id }}, 'RESOLVED')">
+                    <i class="fas fa-check"></i> Resolve
+                </button>
+                <button class="btn btn-ghost" style="padding: 8px 16px; font-size: 12px; width: 140px; color: #f87171; border-color: rgba(248,113,113,0.4);"
+                    onclick="openModal({{ alert.id }}, 'ESCALATED')">
+                    <i class="fas fa-arrow-up"></i> Escalate
+                </button>
+
+            {% elif alert.status == 'RESOLVED' %}
+                <span class="badge badge-success" style="padding: 8px 16px; border-radius: 20px;">
+                    <i class="fas fa-check"></i> Resolved
+                </span>
+
+            {% elif alert.status == 'ESCALATED' %}
+                <span class="badge badge-danger" style="padding: 8px 16px; border-radius: 20px;">
+                    <i class="fas fa-arrow-up"></i> Escalated
+                </span>
+
+            {% elif alert.status == 'FALSE_POSITIVE' %}
+                <span class="badge" style="padding: 8px 16px; border-radius: 20px; background: rgba(156,163,175,0.15); color: #9ca3af;">
+                    <i class="fas fa-ban"></i> False Positive
+                </span>
+
+            {% else %}
+                <button class="btn btn-ghost" style="padding: 8px 16px; font-size: 12px;"
+                    onclick="acknowledgeAlert({{ alert.id }})">
+                    <i class="fas fa-check"></i> Acknowledge
+                </button>
+            {% endif %}
+        </div>
+    </div>
+    {% empty %}
+    <div style="text-align: center; padding: 48px;">
+        <i class="fas fa-bell-slash" style="font-size: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+        <p style="color: var(--text-muted);">No alerts found</p>
+    </div>
+    {% endfor %}
+
+    {% if alerts.has_other_pages %}
+    <div style="display: flex; justify-content: center; gap: 8px; margin-top: 24px;">
+        {% if alerts.has_previous %}
+        <a href="?page={{ alerts.previous_page_number }}" class="btn btn-ghost">
+            <i class="fas fa-chevron-left"></i> Previous
+        </a>
+        {% endif %}
+        <span style="padding: 12px 24px; background: var(--bg-glass); border-radius: 12px;">
+            Page {{ alerts.number }} of {{ alerts.paginator.num_pages }}
+        </span>
+        {% if alerts.has_next %}
+        <a href="?page={{ alerts.next_page_number }}" class="btn btn-ghost">
+            Next <i class="fas fa-chevron-right"></i>
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal -->
+<div id="resolveModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background: #1a1a2e; border: 1px solid var(--border-color); border-radius: 16px; padding: 32px; width: 90%; max-width: 460px;">
+        <h3 id="modalTitle" style="margin: 0 0 8px; font-size: 18px; color: var(--text-primary);"></h3>
+        <p style="color: var(--text-secondary); font-size: 14px; margin: 0 0 16px;">Kya hua aur kaise handle kiya — note likho:</p>
+        <textarea id="resolveNote"
+            style="width: 100%; padding: 12px; background: var(--bg-glass); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); min-height: 90px; font-size: 14px; resize: vertical; box-sizing: border-box;"
+            placeholder="Jaise: IP firewall mein block kar diya, ISP ko report kiya..."></textarea>
+        <div style="display: flex; gap: 12px; margin-top: 16px; justify-content: flex-end;">
+            <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitModal()">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let _alertId = null;
+    let _status  = null;
+
+    function openModal(alertId, status) {
+        _alertId = alertId;
+        _status  = status;
+        const titles = { RESOLVED: '✅ Alert Resolve Karo', ESCALATED: '⚠️ Alert Escalate Karo' };
+        document.getElementById('modalTitle').textContent = titles[status] || 'Update Alert';
+        document.getElementById('resolveNote').value = '';
+        document.getElementById('resolveModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('resolveModal').style.display = 'none';
+    }
+
+    function submitModal() {
+        sendAction(_alertId, _status, document.getElementById('resolveNote').value);
+        closeModal();
+    }
+
+    function quickAction(alertId, status) {
+        sendAction(alertId, status, '');
+    }
+
+    function sendAction(alertId, status, note) {
+        const fd = new FormData();
+        fd.append('status', status);
+        fd.append('note', note);
+        fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        fetch('/alerts/' + alertId + '/resolve/', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(d => { if (d.success) location.reload(); else alert('Error: ' + (d.error || 'Kuch gadbad hui')); })
+            .catch(() => alert('Server se connect nahi ho pa raha'));
+    }
+
+    function acknowledgeAlert(alertId) {
+        fetch('/api/alerts/' + alertId + '/acknowledge/', { method: 'POST' })
+            .then(r => r.json())
+            .then(d => { if (d.success) location.reload(); });
+    }
+
+    function acknowledgeAll() {
+        if (confirm('Acknowledge all visible alerts?')) location.reload();
+    }
+
+    document.getElementById('resolveModal').addEventListener('click', function(e) {
+        if (e.target === this) closeModal();
+    });
+</script>
+{% endblock %}

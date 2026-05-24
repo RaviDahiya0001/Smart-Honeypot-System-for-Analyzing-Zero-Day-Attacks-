@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+
+{% block title %}Attacks - Smart Honeypot{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">🎯 Attack Logs</h1>
+    <div class="header-actions">
+        <a href="{% url 'dashboard:export_csv' %}?type=connections" class="btn btn-ghost">
+            <i class="fas fa-file-csv"></i> Export CSV
+        </a>
+        <a href="{% url 'dashboard:export_json' %}?type=connections" class="btn btn-ghost">
+            <i class="fas fa-file-code"></i> Export JSON
+        </a>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card" style="margin-bottom: 24px;">
+    <form method="get" style="display: flex; gap: 16px; flex-wrap: wrap; align-items: end;">
+        <div style="flex: 1; min-width: 150px;">
+            <label
+                style="display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">Protocol</label>
+            <select name="protocol"
+                style="width: 100%; padding: 12px; background: var(--bg-glass); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                <option value="">All Protocols</option>
+                {% for code, name in protocols %}
+                <option value="{{ code }}" {% if protocol is code %} selected {% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="flex: 1; min-width: 150px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">IP
+                Address</label>
+            <input type="text" name="ip" value="{{ ip_filter }}" placeholder="Filter by IP"
+                style="width: 100%; padding: 12px; background: var(--bg-glass); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+        </div>
+        <div style="flex: 1; min-width: 150px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">From
+                Date</label>
+            <input type="date" name="date_from" value="{{ date_from }}"
+                style="width: 100%; padding: 12px; background: var(--bg-glass); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+        </div>
+        <div style="flex: 1; min-width: 150px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">To
+                Date</label>
+            <input type="date" name="date_to" value="{{ date_to }}"
+                style="width: 100%; padding: 12px; background: var(--bg-glass); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-filter"></i> Filter
+        </button>
+        <a href="{% url 'dashboard:attacks' %}" class="btn btn-ghost">Clear</a>
+    </form>
+</div>
+
+<!-- Attacks Table -->
+<div class="card">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>IP Address</th>
+                <th>Port</th>
+                <th>Protocol</th>
+                <th>Country</th>
+                <th>City</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for conn in connections %}
+            <tr>
+                <td style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+                    {{ conn.timestamp|date:"Y-m-d H:i:s" }}</td>
+                <td><a href="{% url 'dashboard:attacker_detail' conn.ip_address %}"
+                        style="color: var(--accent-primary);">{{ conn.ip_address }}</a></td>
+                <td><span class="badge badge-info">{{ conn.port }}</span></td>
+                <td><span class="badge badge-purple">{{ conn.protocol }}</span></td>
+                <td>{{ conn.country|default:"-" }}</td>
+                <td>{{ conn.city|default:"-" }}</td>
+                <td>
+                    <button class="btn btn-ghost" style="padding: 6px 12px; font-size: 12px;"
+                        onclick="blacklistIP('{{ conn.ip_address }}')">
+                        <i class="fas fa-ban"></i>
+                    </button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 48px;">
+                    <i class="fas fa-search"
+                        style="font-size: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+                    <p style="color: var(--text-muted);">No attacks found matching your criteria</p>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Pagination -->
+    {% if connections.has_other_pages %}
+    <div style="display: flex; justify-content: center; gap: 8px; margin-top: 24px;">
+        {% if connections.has_previous %}
+        <a href="?page={{ connections.previous_page_number }}&protocol={{ protocol }}&ip={{ ip_filter }}"
+            class="btn btn-ghost">
+            <i class="fas fa-chevron-left"></i> Previous
+        </a>
+        {% endif %}
+
+        <span style="padding: 12px 24px; background: var(--bg-glass); border-radius: 12px;">
+            Page {{ connections.number }} of {{ connections.paginator.num_pages }}
+        </span>
+
+        {% if connections.has_next %}
+        <a href="?page={{ connections.next_page_number }}&protocol={{ protocol }}&ip={{ ip_filter }}"
+            class="btn btn-ghost">
+            Next <i class="fas fa-chevron-right"></i>
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    function blacklistIP(ip) {
+        if (confirm('Blacklist IP ' + ip + '?')) {
+            fetch('/api/blacklist/add/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip: ip, reason: 'MANUAL', permanent: false })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('IP blacklisted successfully');
+                    }
+                });
+        }
+    }
+</script>
+{% endblock %}

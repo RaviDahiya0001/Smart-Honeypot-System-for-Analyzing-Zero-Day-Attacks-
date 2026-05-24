@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block title %}Attackers - Smart Honeypot{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">🕵️ Attacker Profiles</h1>
+</div>
+
+<div class="card">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>IP Address</th>
+                <th>Threat Level</th>
+                <th>Connections</th>
+                <th>Login Attempts</th>
+                <th>Commands</th>
+                <th>Country</th>
+                <th>First Seen</th>
+                <th>Last Seen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for profile in profiles %}
+            <tr>
+                <td><a href="{% url 'dashboard:attacker_detail' profile.ip_address %}"
+                        style="color: var(--accent-primary); font-weight: 600;">{{ profile.ip_address }}</a></td>
+                <td>
+                    <span
+                        class="badge badge-{% if profile.threat_level == 'CRITICAL' %}danger{% elif profile.threat_level == 'HIGH' %}warning{% elif profile.threat_level == 'MEDIUM' %}info{% else %}success{% endif %}">
+                        {{ profile.threat_level }}
+                    </span>
+                </td>
+                <td>{{ profile.total_connections }}</td>
+                <td>{{ profile.total_login_attempts }}</td>
+                <td>{{ profile.total_commands }}</td>
+                <td>{{ profile.country|default:"-" }}</td>
+                <td style="font-size: 12px;">{{ profile.first_seen|date:"Y-m-d" }}</td>
+                <td style="font-size: 12px;">{{ profile.last_seen|date:"Y-m-d H:i" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 48px;">
+                    <i class="fas fa-user-secret" style="font-size: 48px; color: var(--text-muted);"></i>
+                    <p style="color: var(--text-muted); margin-top: 16px;">No attacker profiles yet</p>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if profiles.has_other_pages %}
+    <div style="display: flex; justify-content: center; gap: 8px; margin-top: 24px;">
+        {% if profiles.has_previous %}
+        <a href="?page={{ profiles.previous_page_number }}" class="btn btn-ghost"><i
+                class="fas fa-chevron-left"></i></a>
+        {% endif %}
+        <span style="padding: 12px 24px; background: var(--bg-glass); border-radius: 12px;">{{ profiles.number }} /
+            {{profiles.paginator.num_pages }}</span>
+        {% if profiles.has_next %}
+        <a href="?page={{ profiles.next_page_number }}" class="btn btn-ghost"><i class="fas fa-chevron-right"></i></a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

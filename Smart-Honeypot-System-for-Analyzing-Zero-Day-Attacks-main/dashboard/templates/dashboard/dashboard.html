@@ -1,0 +1,418 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Smart Honeypot{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">🍯 Security Dashboard</h1>
+    <div class="header-actions">
+        <button class="btn btn-ghost" onclick="refreshData()">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+        <a href="{% url 'dashboard:reports' %}" class="btn btn-primary">
+            <i class="fas fa-download"></i> Export Report
+        </a>
+    </div>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon"><i class="fas fa-network-wired"></i></div>
+        <div class="stat-value" id="total-connections">{{ stats.total_connections|default:0 }}</div>
+        <div class="stat-label">Total Connections</div>
+        <div class="stat-change up"><i class="fas fa-arrow-up"></i> {{ stats.connections_24h|default:0 }} today</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-icon" style="color: #a78bfa;"><i class="fas fa-globe"></i></div>
+        <div class="stat-value" id="unique-ips">{{ stats.unique_ips|default:0 }}</div>
+        <div class="stat-label">Unique Attackers</div>
+        <div class="stat-change up"><i class="fas fa-arrow-up"></i> {{ stats.unique_ips_24h|default:0 }} new today</div>
+    </div>
+
+    <div class="stat-card warning">
+        <div class="stat-icon" style="color: #fbbf24;"><i class="fas fa-key"></i></div>
+        <div class="stat-value" id="login-attempts">{{ stats.total_login_attempts|default:0 }}</div>
+        <div class="stat-label">Login Attempts</div>
+        <div class="stat-change up"><i class="fas fa-arrow-up"></i> {{ stats.login_attempts_24h|default:0 }} today</div>
+    </div>
+
+    <div class="stat-card danger">
+        <div class="stat-icon" style="color: #f87171;"><i class="fas fa-exclamation-triangle"></i></div>
+        <div class="stat-value" id="active-alerts">{{ stats.active_alerts|default:0 }}</div>
+        <div class="stat-label">Active Alerts</div>
+        <div class="stat-change down"><i class="fas fa-fire"></i> {{ stats.critical_alerts|default:0 }} critical</div>
+    </div>
+
+    <div class="stat-card success">
+        <div class="stat-icon" style="color: #34d399;"><i class="fas fa-terminal"></i></div>
+        <div class="stat-value" id="total-commands">{{ stats.total_commands|default:0 }}</div>
+        <div class="stat-label">Commands Captured</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-icon" style="color: #60a5fa;"><i class="fas fa-virus"></i></div>
+        <div class="stat-value" id="malware-count">{{ stats.malware_detected|default:0 }}</div>
+        <div class="stat-label">Malware Detected</div>
+    </div>
+</div>
+
+<!-- Main Grid -->
+<div class="grid-2" style="margin-bottom: 24px;">
+    <!-- Live Attack Feed -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-bolt" style="color: var(--accent-warning);"></i> Live Attack Feed
+            </h3>
+            <span class="badge badge-success pulse"><i class="fas fa-circle"></i> Live</span>
+        </div>
+        <div class="live-feed" id="live-feed">
+            <!-- Feed items will be populated by JavaScript -->
+            <div class="feed-item">
+                <div class="feed-icon ssh"><i class="fas fa-terminal"></i></div>
+                <div class="feed-content">
+                    <div class="feed-title">Waiting for attacks...</div>
+                    <div class="feed-meta">Real-time attack monitoring active</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attack Map -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-globe-americas" style="color: var(--accent-primary);"></i> Attack
+                Origins</h3>
+        </div>
+        <div id="attack-map"></div>
+    </div>
+</div>
+
+<div class="grid-2" style="margin-bottom: 24px;">
+    <!-- Attack Timeline -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-chart-area" style="color: var(--accent-secondary);"></i> Attack
+                Timeline</h3>
+        </div>
+        <div class="chart-container">
+            <canvas id="timeline-chart"></canvas>
+        </div>
+    </div>
+
+    <!-- Protocol Distribution -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-chart-pie" style="color: var(--accent-info);"></i> Protocol
+                Distribution</h3>
+        </div>
+        <div class="chart-container">
+            <canvas id="protocol-chart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <!-- Top Countries -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-flag" style="color: var(--accent-warning);"></i> Top Attacking
+                Countries</h3>
+        </div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Country</th>
+                    <th>Attacks</th>
+                    <th>%</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for country in top_countries %}
+                <tr>
+                    <td>{{ country.country|default:"Unknown" }}</td>
+                    <td><span class="badge badge-info">{{ country.count }}</span></td>
+                    <td>{{ country.count|floatformat:1 }}%</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="3" style="text-align: center;">No data yet</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Recent Alerts -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-bell" style="color: var(--accent-danger);"></i> Recent Alerts</h3>
+            <a href="{% url 'dashboard:alerts' %}" class="btn btn-ghost"
+                style="padding: 8px 16px; font-size: 12px;">View All</a>
+        </div>
+        <div style="max-height: 300px; overflow-y: auto;">
+            {% for alert in recent_alerts %}
+            <div class="alert-item {{ alert.severity|lower }}">
+                <div>
+                    <span
+                        class="badge badge-{% if alert.severity == 'CRITICAL' %}danger{% elif alert.severity == 'HIGH' %}warning{% else %}info{% endif %}">
+                        {{ alert.severity }}</span>
+                </div>
+                <div style="flex: 1;">
+                    <div style="font-weight: 600;">{{ alert.title }}</div>
+                    <div style="font-size: 12px; color: var(--text-muted);">{{ alert.timestamp|timesince }} ago</div>
+                </div>
+            </div>
+            {% empty %}
+            <p style="text-align: center; color: var(--text-muted); padding: 24px;">No active alerts</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Honeypot Services Status -->
+<div class="card" style="margin-top: 24px;">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-server" style="color: var(--accent-success);"></i> Honeypot Services
+        </h3>
+    </div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Service</th>
+                <th>Port</th>
+                <th>Status</th>
+                <th>Connections</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for service in services %}
+            <tr>
+                <td><strong>{{ service.name }}</strong></td>
+                <td><span class="badge badge-purple">{{ service.port }}</span></td>
+                <td>
+                    <div class="service-status">
+                        <div class="status-dot {{ service.status|lower }}"></div>
+                        {{ service.status }}
+                    </div>
+                </td>
+                <td>{{ service.total_connections }}</td>
+                <td>
+                    <button class="btn btn-ghost" style="padding: 6px 12px; font-size: 12px;"
+                        onclick="toggleService('{{ service.name }}')">
+                        {% if service.status == 'RUNNING' %}Stop{% else %}Start{% endif %}
+                    </button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" style="text-align: center;">
+                    No services configured. <a href="{% url 'dashboard:settings' %}">Configure services</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Map data from Django
+    const mapData = {{ map_data| safe }};
+
+    // Initialize map
+    const map = L.map('attack-map', {
+        zoomControl: false
+    }).setView([20, 0], 2);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap, CartoDB',
+        maxZoom: 19
+    }).addTo(map);
+
+    // Add markers for attacks
+    mapData.forEach(attack => {
+        if (attack.lat && attack.lng) {
+            const marker = L.circleMarker([attack.lat, attack.lng], {
+                radius: 6,
+                fillColor: '#00d4ff',
+                color: '#00d4ff',
+                weight: 1,
+                opacity: 0.8,
+                fillOpacity: 0.6
+            }).addTo(map);
+
+            marker.bindPopup(`
+                <strong>${attack.ip}</strong><br>
+                ${attack.country || 'Unknown'}<br>
+                Protocol: ${attack.protocol}
+            `);
+        }
+    });
+
+    // Timeline Chart
+    const timelineCtx = document.getElementById('timeline-chart').getContext('2d');
+    const timelineChart = new Chart(timelineCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Attacks',
+                data: [],
+                borderColor: '#00d4ff',
+                backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#00d4ff',
+                pointBorderColor: '#fff',
+                pointRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#a0a0b0' }
+                },
+                y: {
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#a0a0b0' }
+                }
+            }
+        }
+    });
+
+    // Protocol Chart
+    const protocolCtx = document.getElementById('protocol-chart').getContext('2d');
+    const protocolData = {{ protocol_stats| safe }};
+
+    new Chart(protocolCtx, {
+        type: 'doughnut',
+        data: {
+            labels: protocolData.map(p => p.protocol),
+            datasets: [{
+                data: protocolData.map(p => p.count),
+                backgroundColor: [
+                    '#7c3aed', '#00d4ff', '#10b981', '#f59e0b', '#ef4444', '#6366f1'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: { color: '#a0a0b0', padding: 16 }
+                }
+            },
+            cutout: '60%'
+        }
+    });
+
+    // WebSocket for real-time updates
+    let ws;
+    function connectWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${protocol}//${window.location.host}/ws/dashboard/`);
+
+        ws.onmessage = function (event) {
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'new_attack') {
+                addFeedItem(data.data);
+                updateStats();
+            } else if (data.type === 'stats_update') {
+                updateStatsDisplay(data.data);
+            } else if (data.type === 'recent_attacks') {
+                updateFeed(data.data);
+            }
+        };
+
+        ws.onclose = function () {
+            setTimeout(connectWebSocket, 3000);
+        };
+    }
+
+    function addFeedItem(attack) {
+        const feed = document.getElementById('live-feed');
+        const iconClass = attack.protocol.toLowerCase();
+
+        const item = document.createElement('div');
+        item.className = 'feed-item';
+        item.innerHTML = `
+            <div class="feed-icon ${iconClass}"><i class="fas fa-terminal"></i></div>
+            <div class="feed-content">
+                <div class="feed-title">${attack.ip} → ${attack.protocol}:${attack.port}</div>
+                <div class="feed-meta">${attack.country || 'Unknown'}</div>
+            </div>
+            <div class="feed-time">${new Date(attack.timestamp).toLocaleTimeString()}</div>
+        `;
+
+        feed.insertBefore(item, feed.firstChild);
+
+        // Keep only last 20 items
+        while (feed.children.length > 20) {
+            feed.removeChild(feed.lastChild);
+        }
+    }
+
+    function updateFeed(attacks) {
+        const feed = document.getElementById('live-feed');
+        feed.innerHTML = '';
+
+        attacks.forEach(attack => addFeedItem(attack));
+    }
+
+    function updateStatsDisplay(stats) {
+        document.getElementById('total-connections').textContent = stats.total_connections;
+        document.getElementById('unique-ips').textContent = stats.unique_ips;
+        document.getElementById('login-attempts').textContent = stats.total_login_attempts;
+        document.getElementById('active-alerts').textContent = stats.active_alerts;
+        document.getElementById('total-commands').textContent = stats.total_commands;
+    }
+
+    function refreshData() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'get_stats' }));
+            ws.send(JSON.stringify({ type: 'get_recent' }));
+        }
+        location.reload();
+    }
+
+    function toggleService(serviceName) {
+        fetch(`/api/services/${serviceName}/toggle/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                }
+            });
+    }
+
+    // Initialize WebSocket
+    connectWebSocket();
+
+    // Load timeline data
+    fetch('/api/stats/timeline/')
+        .then(response => response.json())
+        .then(data => {
+            const timeline = data.timeline || [];
+            timelineChart.data.labels = timeline.map(t => new Date(t.hour).toLocaleTimeString([], { hour: '2-digit' }));
+            timelineChart.data.datasets[0].data = timeline.map(t => t.count);
+            timelineChart.update();
+        });
+</script>
+{% endblock %}

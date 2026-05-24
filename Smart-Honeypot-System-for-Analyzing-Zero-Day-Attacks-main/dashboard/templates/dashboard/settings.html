@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+
+{% block title %}Settings - Smart Honeypot{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">⚙️ Settings</h1>
+</div>
+
+<div class="grid-2">
+    <!-- Honeypot Services -->
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom: 24px;"><i class="fas fa-server"></i> Honeypot Services</h3>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Port</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for service in services %}
+                <tr>
+                    <td><strong>{{ service.name }}</strong></td>
+                    <td><span class="badge badge-purple">{{ service.port }}</span></td>
+                    <td>
+                        <div class="service-status">
+                            <div class="status-dot {{ service.status|lower }}"></div>
+                            {{ service.status }}
+                        </div>
+                    </td>
+                    <td>
+                        <button class="btn btn-ghost" style="padding: 6px 12px; font-size: 12px;"
+                            onclick="toggleService('{{ service.name }}')">
+                            {% if service.status == 'RUNNING' %}Stop{% else %}Start{% endif %}
+                        </button>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4" style="text-align: center;">No services configured</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- IP Blacklist -->
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom: 24px;"><i class="fas fa-ban"></i> IP Blacklist</h3>
+
+        <form id="blacklist-form" style="display: flex; gap: 12px; margin-bottom: 24px;">
+            <input type="text" id="blacklist-ip" placeholder="IP Address"
+                style="flex: 1; padding: 12px; background: var(--bg-glass); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+            <button type="submit" class="btn btn-danger"><i class="fas fa-plus"></i> Add</button>
+        </form>
+
+        <div style="max-height: 300px; overflow-y: auto;">
+            {% for entry in blacklist %}
+            <div class="feed-item">
+                <span style="flex: 1; font-family: 'JetBrains Mono', monospace;">{{ entry.ip_address }}</span>
+                <span class="badge badge-warning">{{ entry.reason }}</span>
+                <button class="btn btn-ghost" style="padding: 4px 8px;" onclick="removeFromBlacklist({{ entry.id }})">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            {% empty %}
+            <p style="color: var(--text-muted); text-align: center;">No blacklisted IPs</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+    function toggleService(serviceName) {
+        fetch(`/api/services/${serviceName}/toggle/`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => { if (data.success) location.reload(); });
+    }
+
+    document.getElementById('blacklist-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const ip = document.getElementById('blacklist-ip').value;
+        fetch('/api/blacklist/add/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip: ip, reason: 'MANUAL', permanent: true })
+        }).then(() => location.reload());
+    });
+
+    function removeFromBlacklist(id) {
+        fetch(`/api/blacklist/remove/${id}/`, { method: 'DELETE' })
+            .then(() => location.reload());
+    }
+</script>
+{% endblock %}

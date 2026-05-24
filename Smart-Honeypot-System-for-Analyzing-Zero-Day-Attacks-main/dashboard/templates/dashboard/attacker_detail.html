@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ profile.ip_address }} - Attacker Profile{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">🎯 {{ profile.ip_address }}</h1>
+    <div class="header-actions">
+        <button class="btn btn-danger" onclick="blacklistIP('{{ profile.ip_address }}')">
+            <i class="fas fa-ban"></i> Blacklist
+        </button>
+    </div>
+</div>
+
+<!-- Profile Overview -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon"><i class="fas fa-shield-alt"></i></div>
+        <span
+            class="badge badge-{% if profile.threat_level == 'CRITICAL' %}danger{% elif profile.threat_level == 'HIGH' %}warning{% else %}info{% endif %}"
+            style="font-size: 18px; padding: 8px 16px;">
+            {{ profile.threat_level }}
+        </span>
+        <div class="stat-label" style="margin-top: 8px;">Threat Level (Score: {{ profile.threat_score|floatformat:0 }})
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon"><i class="fas fa-network-wired"></i></div>
+        <div class="stat-value">{{ profile.total_connections }}</div>
+        <div class="stat-label">Connections</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon"><i class="fas fa-key"></i></div>
+        <div class="stat-value">{{ profile.total_login_attempts }}</div>
+        <div class="stat-label">Login Attempts</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon"><i class="fas fa-terminal"></i></div>
+        <div class="stat-value">{{ profile.total_commands }}</div>
+        <div class="stat-label">Commands</div>
+    </div>
+</div>
+
+<!-- Location Info -->
+<div class="card" style="margin-bottom: 24px;">
+    <h3 class="card-title" style="margin-bottom: 16px;"><i class="fas fa-map-marker-alt"></i> Location</h3>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;">
+        <div><strong>Country:</strong> {{ profile.country|default:"-" }}</div>
+        <div><strong>City:</strong> {{ profile.city|default:"-" }}</div>
+        <div><strong>ISP:</strong> {{ profile.isp|default:"-" }}</div>
+        <div><strong>First Seen:</strong> {{ profile.first_seen|date:"Y-m-d H:i" }}</div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <!-- Recent Connections -->
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom: 16px;"><i class="fas fa-plug"></i> Recent Connections</h3>
+        <div style="max-height: 300px; overflow-y: auto;">
+            {% for conn in connections %}
+            <div class="feed-item">
+                <span class="badge badge-purple">{{ conn.protocol }}</span>
+                <span style="flex: 1;">Port {{ conn.port }}</span>
+                <span style="font-size: 12px; color: var(--text-muted);">{{ conn.timestamp|timesince }} ago</span>
+            </div>
+            {% empty %}
+            <p style="color: var(--text-muted);">No connections</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Login Attempts -->
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom: 16px;"><i class="fas fa-key"></i> Login Attempts</h3>
+        <div style="max-height: 300px; overflow-y: auto;">
+            {% for attempt in login_attempts %}
+            <div class="feed-item">
+                <span class="badge badge-info">{{ attempt.service }}</span>
+                <span style="flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+                    {{ attempt.username }}:{{ attempt.password|truncatechars:15 }}</span>
+            </div>
+            {% empty %}
+            <p style="color: var(--text-muted);">No login attempts</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Commands -->
+<div class="card" style="margin-top: 24px;">
+    <h3 class="card-title" style="margin-bottom: 16px;"><i class="fas fa-terminal"></i> Executed Commands</h3>
+    <div style="max-height: 400px; overflow-y: auto;">
+        {% for cmd in commands %}
+        <div class="feed-item">
+            <span
+                class="badge badge-{% if cmd.risk_level == 'CRITICAL' %}danger{% elif cmd.risk_level == 'HIGH' %}warning{% else %}info{% endif %}">{{
+                cmd.risk_level }}</span>
+            <code
+                style="flex: 1; font-family: 'JetBrains Mono', monospace; background: var(--bg-glass); padding: 4px 8px; border-radius: 4px;">{{ cmd.command|truncatechars:100 }}</code>
+            <span style="font-size: 12px; color: var(--text-muted);">{{ cmd.timestamp|timesince }} ago</span>
+        </div>
+        {% empty %}
+        <p style="color: var(--text-muted);">No commands executed</p>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    function blacklistIP(ip) {
+        if (confirm(`Blacklist IP ${ip}?`)) {
+            fetch('/api/blacklist/add/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip: ip, reason: 'MANUAL', permanent: true })
+            }).then(() => alert('IP blacklisted'));
+        }
+    }
+</script>
+{% endblock %}
